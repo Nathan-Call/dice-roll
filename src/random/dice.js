@@ -2,23 +2,27 @@
  * Proprietary dice randomizer.
  *
  * This module owns the single, swappable source of randomness for the whole
- * app. Everything rolls dice through `rollDie()`, which is built on the
- * abstract source contract (`nextFloat`). Swap the source at runtime with
- * `setRandomSource('crypto' | 'math' | 'seeded')` and every future roll uses
- * the new source — no other code changes.
+ * app. Everything rolls dice through `rollDie()`, which is built on the abstract
+ * source contract (`async nextFloat`). Swap the source at runtime with
+ * `setRandomSource('local' | 'atmospheric' | 'quantum')` and every future roll
+ * uses the new source — no other code changes.
  */
 
-import { createCryptoSource, createMathSource, createSeededSource } from "./randomSource.js";
+import {
+  createLocalSource,
+  createAtmosphericSource,
+  createQuantumSource,
+} from "./randomSource.js";
 
 /** Registry of built-in source factories, keyed by id. */
 export const SOURCES = {
-  crypto: createCryptoSource,
-  math: createMathSource,
-  seeded: createSeededSource,
+  local: createLocalSource,
+  atmospheric: createAtmosphericSource,
+  quantum: createQuantumSource,
 };
 
 /** The one place the active randomness source lives. */
-let source = createCryptoSource();
+let source = createLocalSource();
 
 /**
  * Swap the active randomness source.
@@ -36,6 +40,8 @@ export function setRandomSource(idOrSource, ...args) {
   } else {
     throw new Error("A random source must implement nextFloat().");
   }
+  // Let network sources warm their buffer before the first roll.
+  source.prefetch?.();
   return source;
 }
 
@@ -44,26 +50,37 @@ export function getRandomSource() {
 }
 
 /**
+ * A normalized snapshot of the active source for the UI indicator.
+ * mode: 'local' (instant) | 'live' (serving fetched values) |
+ *       'fetching' (buffer empty, request in flight) | 'fallback' (using local).
+ */
+export function getSourceStatus() {
+  if (!source.status) {
+    return { id: source.id, label: source.label, mode: "local", buffered: null };
+  }
+  const s = source.status();
+  let mode;
+  if (s.buffered > 0) mode = "live";
+  else if (s.fetching) mode = "fetching";
+  else mode = "fallback";
+  return { id: source.id, label: source.label, mode, buffered: s.buffered };
+}
+
+/**
  * Draw an unbiased integer in [1, sides].
  *
- * We rejection-sample the source so that any tiny bias from the top of the
- * float range is discarded, giving a clean uniform distribution over the faces
- * regardless of which source is plugged in.
+ * `floor(x * sides)` is uniform for any well-distributed float in [0, 1),
+ * regardless of the source's resolution (16-bit quantum values, 30-bit
+ * atmospheric, 32-bit local), which a modulo/rejection scheme is not. The
+ * `Math.min` guards the vanishingly rare case of x rounding up to 1.
  */
-export function randomInt(sides) {
+export async function randomInt(sides) {
   if (!Number.isInteger(sides) || sides < 1) {
     throw new Error(`sides must be a positive integer, got ${sides}`);
   }
-  // Reject values that would land in a short, unevenly-sized final bucket.
-  const limit = Math.floor(UINT_SPACE / sides) * sides;
-  let scaled;
-  do {
-    scaled = Math.floor(source.nextFloat() * UINT_SPACE);
-  } while (scaled >= limit);
-  return (scaled % sides) + 1;
+  const x = await source.nextFloat();
+  return Math.min(sides - 1, Math.floor(x * sides)) + 1;
 }
-
-const UINT_SPACE = 0x100000000; // 2^32 sampling space for rejection sampling
 
 /** Roll a single die with the given number of sides. */
 export function rollDie(sides) {

@@ -53,6 +53,47 @@
   font-size: 0.8rem;
 }
 
+.src-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.58rem;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  color: #93a1c7;
+}
+
+.src-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #64748b;
+  box-shadow: 0 0 6px currentColor;
+  color: #64748b;
+}
+
+.src-status.local .src-dot,
+.src-status.live .src-dot {
+  background: #4ade80;
+  color: #4ade80;
+}
+
+.src-status.fallback .src-dot {
+  background: #fbbf24;
+  color: #fbbf24;
+}
+
+.src-status.fetching .src-dot {
+  background: #fbbf24;
+  color: #fbbf24;
+  animation: src-pulse 1s ease-in-out infinite;
+}
+
+@keyframes src-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
 /* ---- 3D stage ---- */
 .stage {
   position: relative;
@@ -66,6 +107,43 @@
   height: 100% !important;
 }
 
+.swipe-hint {
+  position: absolute;
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(12, 18, 34, 0.55);
+  border: 1px solid rgba(125, 211, 252, 0.25);
+  color: #cdd6f4;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  opacity: 0.85;
+  transition: opacity 0.3s ease;
+  animation: swipe-nudge 2.4s ease-in-out infinite;
+}
+
+.swipe-hint::before {
+  content: '↔';
+  font-size: 0.95rem;
+  color: #7dd3fc;
+}
+
+.swipe-hint.hidden {
+  opacity: 0;
+}
+
+@keyframes swipe-nudge {
+  0%, 100% { transform: translateX(-50%); }
+  50% { transform: translateX(calc(-50% + 6px)); }
+}
+
 /* ---- Result readout ---- */
 .result {
   position: absolute;
@@ -77,12 +155,15 @@
   align-items: center;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 0.35s ease, transform 0.35s ease;
+  /* Hide instantly on a new roll (no fade-out), so the incoming result never
+     flashes mid-fade; only the reveal (adding .show) animates. */
+  transition: none;
 }
 
 .result.show {
   opacity: 1;
   transform: translate(-50%, 0);
+  transition: opacity 0.35s ease, transform 0.35s ease;
 }
 
 .result-value {

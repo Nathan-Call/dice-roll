@@ -1,5 +1,6 @@
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, ContactShadows } from '@react-three/drei';
+import { TOUCH } from 'three';
 import Die from './Die';
 import { getGroundTexture, THEME_BY_ID, DEFAULT_THEME } from '../dice/groundTexture';
 
@@ -66,6 +67,10 @@ export default function DiceScene({ config, result, rollId, onSettled, theme }) 
         minPolarAngle={Math.PI / 6}
         maxPolarAngle={Math.PI / 2.05}
         rotateSpeed={0.6}
+        // One-finger touch is left free for swipe-to-roll (mapped to PAN, which
+        // is disabled, so it's a no-op); two-finger orbits on mobile. Desktop
+        // mouse-drag orbit is unaffected.
+        touches={{ ONE: TOUCH.PAN, TWO: TOUCH.ROTATE }}
       />
     </Canvas>
   );

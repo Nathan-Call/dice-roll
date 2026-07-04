@@ -1,9 +1,26 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import DiceScene from './components/DiceScene';
 import { DICE, DEFAULT_DIE } from './dice/diceConfig';
-import { rollDie, setRandomSource, SOURCES } from './random/dice';
+import { rollDie, setRandomSource, getSourceStatus, SOURCES } from './random/dice';
 import { THEMES, DEFAULT_THEME } from './dice/groundTexture';
 import './App.css';
+
+// Coarse-pointer (touch) devices get the swipe-to-roll hint.
+const IS_TOUCH =
+  typeof window !== 'undefined' &&
+  typeof window.matchMedia === 'function' &&
+  window.matchMedia('(pointer: coarse)').matches;
+
+const SWIPE_MIN_DISTANCE = 55; // px
+const SWIPE_MAX_TIME = 700; // ms
+
+// Short caption shown next to the status dot for each mode.
+const STATUS_TEXT = {
+  local: 'ready',
+  live: 'live',
+  fetching: 'fetching…',
+  fallback: 'fallback',
+};
 
 // Build the source labels once so the <select> doesn't re-instantiate sources.
 const SOURCE_OPTIONS = Object.keys(SOURCES).map((id) => ({
@@ -16,15 +33,56 @@ export default function App() {
   const [result, setResult] = useState(null);
   const [rollId, setRollId] = useState(0);
   const [rolling, setRolling] = useState(false);
-  const [sourceId, setSourceId] = useState('crypto');
+  const [sourceId, setSourceId] = useState('local');
+  const [status, setStatus] = useState(() => getSourceStatus());
   const [theme, setTheme] = useState(DEFAULT_THEME.id);
 
-  const roll = useCallback(() => {
+  // Poll the active source so the indicator reflects buffering/fallback live.
+  useEffect(() => {
+    const tick = () => setStatus(getSourceStatus());
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [sourceId]);
+
+  const roll = useCallback(async () => {
     if (rolling) return;
-    setResult(rollDie(config.sides));
-    setRollId((id) => id + 1);
     setRolling(true);
+    try {
+      // Await the source (a network source may still be fetching), then start
+      // the animation once we have the result.
+      const value = await rollDie(config.sides);
+      setResult(value);
+      setRollId((id) => id + 1);
+    } catch {
+      setRolling(false);
+    }
   }, [config.sides, rolling]);
+
+  // Swipe-to-roll: a quick one-finger flick on the stage rolls the dice.
+  // (Two-finger drag still orbits the camera — see DiceScene.)
+  const swipeStart = useRef(null);
+  const onTouchStart = useCallback((e) => {
+    if (e.touches.length !== 1) {
+      swipeStart.current = null; // multi-touch is an orbit gesture, not a swipe
+      return;
+    }
+    const t = e.touches[0];
+    swipeStart.current = { x: t.clientX, y: t.clientY, time: performance.now() };
+  }, []);
+  const onTouchEnd = useCallback(
+    (e) => {
+      const start = swipeStart.current;
+      swipeStart.current = null;
+      if (!start || e.touches.length > 0) return; // ignore if fingers remain
+      const t = e.changedTouches[0];
+      if (!t) return;
+      const dist = Math.hypot(t.clientX - start.x, t.clientY - start.y);
+      const dt = performance.now() - start.time;
+      if (dist >= SWIPE_MIN_DISTANCE && dt <= SWIPE_MAX_TIME) roll();
+    },
+    [roll],
+  );
 
   const selectDie = useCallback((die) => {
     setConfig(die);
@@ -35,6 +93,7 @@ export default function App() {
   const selectSource = useCallback((id) => {
     setRandomSource(id);
     setSourceId(id);
+    setStatus(getSourceStatus());
   }, []);
 
   return (
@@ -61,11 +120,18 @@ export default function App() {
                 </option>
               ))}
             </select>
+            <span className={`src-status ${status.mode}`}>
+              <span className="src-dot" />
+              {STATUS_TEXT[status.mode]}
+              {status.buffered != null && status.mode === 'live'
+                ? ` · ${status.buffered}`
+                : ''}
+            </span>
           </label>
         </div>
       </header>
 
-      <main className="stage">
+      <main className="stage" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
         <DiceScene
           config={config}
           result={result}
@@ -79,6 +145,11 @@ export default function App() {
           </span>
           <span className="result-label">{config.label}</span>
         </div>
+        {IS_TOUCH && (
+          <div className={`swipe-hint ${rolling ? 'hidden' : ''}`}>
+            Swipe to roll
+          </div>
+        )}
       </main>
 
       <footer className="controls">

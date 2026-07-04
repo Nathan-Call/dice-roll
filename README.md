@@ -29,24 +29,35 @@ npm run build    # production bundle in dist/
 
 The one place randomness lives is `src/random/`:
 
-- `randomSource.js` — a "source" is any object with `nextFloat(): number` in
-  `[0, 1)`. Three are built in: `crypto` (CSPRNG, default), `math`
-  (`Math.random`) and `seeded` (deterministic mulberry32).
-- `dice.js` — owns the active source and exposes `rollDie(sides)`, which draws
-  an unbiased integer via rejection sampling.
+- `randomSource.js` — a "source" is any object with `async nextFloat(): number`
+  in `[0, 1)`. Three are built in:
+  - **Local Entropy** (default) — SHA-256 over Web Crypto bytes, browser
+    timing, device signals and captured user interaction. Instant and offline.
+  - **Atmospheric** — true random from atmospheric radio noise (Random.org).
+  - **Quantum** — true random from quantum vacuum fluctuations (ANU QRNG).
+- `dice.js` — owns the active source and exposes `rollDie(sides)`, which draws a
+  uniform integer with `floor(x * sides)` (correct for any source resolution).
 
 Change the source at runtime (the UI dropdown does exactly this):
 
 ```js
 import { setRandomSource, rollDie } from './random/dice';
 
-setRandomSource('seeded');   // reproducible rolls
-rollDie(20);                 // -> 1..20
+setRandomSource('quantum');    // warms the buffer in the background
+await rollDie(20);             // -> 1..20
 ```
 
+**Rate limits & availability.** The network sources are metered — the ANU
+Quantum API allows only ~1 request per 60s. So each network source fetches a
+large batch (~1024 values), serves rolls from that buffer, tops it up in the
+background on a cooldown (Quantum ≥ 60s, Atmospheric ≥ 10s), and **falls back to
+Local Entropy** whenever the buffer is empty or a request fails (offline, CORS,
+quota). The upshot: rolls are always available — every second — regardless of
+source, and every value is unique.
+
 To add a new source (e.g. a hardware RNG or network beacon), implement
-`nextFloat()` and register the factory in `SOURCES` — nothing else changes.
+`async nextFloat()` and register the factory in `SOURCES` — nothing else changes.
 
 ```js
-setRandomSource({ id: 'atmos', label: 'Atmospheric', nextFloat: () => /* ... */ });
+setRandomSource({ id: 'atmos', label: 'Atmospheric', async nextFloat() { /* ... */ } });
 ```
