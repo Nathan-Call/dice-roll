@@ -13,7 +13,7 @@ export const GROUND_Y = -1.1;
  * camera looks down at an angle so the die's top face is readable once it
  * settles. Drag to orbit (touch-friendly); zoom/pan are disabled.
  */
-export default function DiceScene({ config, result, rollId, onSettled, theme }) {
+export default function DiceScene({ config, result, rollId, rollDir, onSettled, theme }) {
   const t = THEME_BY_ID[theme] ?? DEFAULT_THEME;
   const groundMap = getGroundTexture(t.id);
 
@@ -35,6 +35,7 @@ export default function DiceScene({ config, result, rollId, onSettled, theme }) 
         config={config}
         result={result}
         rollId={rollId}
+        rollDir={rollDir}
         onSettled={onSettled}
         groundY={GROUND_Y}
       />

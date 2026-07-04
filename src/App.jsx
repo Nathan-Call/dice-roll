@@ -32,6 +32,7 @@ export default function App() {
   const [config, setConfig] = useState(DEFAULT_DIE);
   const [result, setResult] = useState(null);
   const [rollId, setRollId] = useState(0);
+  const [rollDir, setRollDir] = useState(null);
   const [rolling, setRolling] = useState(false);
   const [sourceId, setSourceId] = useState('local');
   const [status, setStatus] = useState(() => getSourceStatus());
@@ -45,19 +46,24 @@ export default function App() {
     return () => clearInterval(id);
   }, [sourceId]);
 
-  const roll = useCallback(async () => {
-    if (rolling) return;
-    setRolling(true);
-    try {
-      // Await the source (a network source may still be fetching), then start
-      // the animation once we have the result.
-      const value = await rollDie(config.sides);
-      setResult(value);
-      setRollId((id) => id + 1);
-    } catch {
-      setRolling(false);
-    }
-  }, [config.sides, rolling]);
+  const roll = useCallback(
+    async (dir = null) => {
+      if (rolling) return;
+      setRolling(true);
+      try {
+        // Await the source (a network source may still be fetching), then start
+        // the animation once we have the result. `dir` (from a swipe) steers
+        // which way the die rolls; null means a random direction.
+        const value = await rollDie(config.sides);
+        setRollDir(dir);
+        setResult(value);
+        setRollId((id) => id + 1);
+      } catch {
+        setRolling(false);
+      }
+    },
+    [config.sides, rolling],
+  );
 
   // Swipe-to-roll: a quick one-finger flick on the stage rolls the dice.
   // (Two-finger drag still orbits the camera — see DiceScene.)
@@ -77,9 +83,16 @@ export default function App() {
       if (!start || e.touches.length > 0) return; // ignore if fingers remain
       const t = e.changedTouches[0];
       if (!t) return;
-      const dist = Math.hypot(t.clientX - start.x, t.clientY - start.y);
+      const dx = t.clientX - start.x;
+      const dy = t.clientY - start.y;
+      const dist = Math.hypot(dx, dy);
       const dt = performance.now() - start.time;
-      if (dist >= SWIPE_MIN_DISTANCE && dt <= SWIPE_MAX_TIME) roll();
+      if (dist >= SWIPE_MIN_DISTANCE && dt <= SWIPE_MAX_TIME) {
+        // Direction the die should roll (screen X -> world X, screen down ->
+        // toward camera), with a 0..1 "power" from the swipe length.
+        const power = Math.min(1, (dist - SWIPE_MIN_DISTANCE) / 220);
+        roll({ x: dx / dist, y: dy / dist, power });
+      }
     },
     [roll],
   );
@@ -136,6 +149,7 @@ export default function App() {
           config={config}
           result={result}
           rollId={rollId}
+          rollDir={rollDir}
           onSettled={() => setRolling(false)}
           theme={theme}
         />
@@ -165,7 +179,7 @@ export default function App() {
             </button>
           ))}
         </div>
-        <button className="roll-btn" onClick={roll} disabled={rolling}>
+        <button className="roll-btn" onClick={() => roll()} disabled={rolling}>
           {rolling ? 'Rolling…' : `Roll ${config.label}`}
         </button>
       </footer>

@@ -48,7 +48,14 @@ function faceQuaternion(normal) {
  * (values at its corners) lands on a face with the result vertex pointing up.
  * Rolls are triggered by bumping `rollId`.
  */
-export default function Die({ config, result, rollId, onSettled, groundY = -1.1 }) {
+export default function Die({
+  config,
+  result,
+  rollId,
+  rollDir,
+  onSettled,
+  groundY = -1.1,
+}) {
   const groupRef = useRef();
   const glowRef = useRef();
   const anim = useRef(null);
@@ -155,18 +162,38 @@ export default function Die({ config, result, rollId, onSettled, groundY = -1.1 
       glowQuat = target.quaternion;
     }
 
-    const side = Math.random() < 0.5 ? -1 : 1;
-    const travelX = side * (1.8 + Math.random() * 1.0);
-    const travelZ = -1.1 - Math.random() * 0.7;
+    // Motion direction across the table + how far/fast it travels. A swipe sets
+    // the direction (screen X -> world +X, screen down -> world +Z, toward the
+    // camera) and its strength; a button/tap roll picks a random direction.
+    let travelDir; // unit vector the die moves along
+    let distance; // how far it travels in from off-screen
+    let spins; // full forward turns
+    let wobble; // extra axis randomness
+    if (rollDir) {
+      travelDir = new THREE.Vector3(rollDir.x, 0, rollDir.y);
+      if (travelDir.lengthSq() < 1e-6) travelDir.set(0, 0, 1);
+      travelDir.normalize();
+      distance = 2.2 + rollDir.power * 2.0; // harder swipe travels farther
+      spins = 3 + Math.round(rollDir.power * 3);
+      wobble = 0.15;
+    } else {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      travelDir = new THREE.Vector3(side, 0, 0.6 + Math.random() * 0.4).normalize();
+      distance = 1.8 + Math.random() * 1.0;
+      spins = 3 + Math.floor(Math.random() * 2);
+      wobble = 0.35;
+    }
+    // Start off-screen on the far side and roll in along travelDir to the centre.
+    const travelX = -travelDir.x * distance;
+    const travelZ = -travelDir.z * distance;
     // Roll about the horizontal axis perpendicular to the travel direction so
     // the die tumbles *forward* into place (like it's rolling across the table)
     // instead of an unnatural backspin. A little random tilt keeps it lively.
-    const travelDir = new THREE.Vector3(-travelX, 0, -travelZ).normalize();
     const rollAxis = new THREE.Vector3()
       .crossVectors(WORLD_UP, travelDir)
       .addScaledVector(
         new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5),
-        0.35,
+        wobble,
       )
       .normalize();
     anim.current = {
@@ -175,7 +202,7 @@ export default function Die({ config, result, rollId, onSettled, groundY = -1.1 
       to: toQuat,
       minY: lowestY(toQuat, config.scale),
       spinAxis: rollAxis,
-      spins: 3 + Math.floor(Math.random() * 2), // full forward turns
+      spins,
       travelX,
       travelZ,
       rollStart: now(),
